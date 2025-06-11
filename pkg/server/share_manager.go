@@ -37,6 +37,7 @@ const shareManagerPrefix = "share-manager-"
 const EnvKeyFastFailover = "FAST_FAILOVER"
 const EnvKeyLeaseLifetime = "LEASE_LIFETIME"
 const EnvKeyGracePeriod = "GRACE_PERIOD"
+const EnvKeyFormatOptions = "FS_FORMAT_OPTIONS"
 const defaultLeaseLifetime = 60
 const defaultGracePeriod = 90
 
@@ -234,6 +235,7 @@ func (m *ShareManager) tearDownDevice(vol volume.Volume) error {
 func (m *ShareManager) MountVolume(vol volume.Volume, devicePath, mountPath string) error {
 	fsType := vol.FsType
 	mountOptions := vol.MountOptions
+	formatOptions := m.getFormatOptions()
 
 	// https://github.com/longhorn/longhorn/issues/2991
 	// pre v1.2 we ignored the fsType and always formatted as ext4
@@ -251,7 +253,16 @@ func (m *ShareManager) MountVolume(vol volume.Volume, devicePath, mountPath stri
 		fsType = diskFormat
 	}
 
-	return volume.MountVolume(devicePath, mountPath, fsType, mountOptions)
+	return volume.MountVolume(devicePath, mountPath, fsType, mountOptions, formatOptions)
+}
+
+func (m *ShareManager) getFormatOptions() []string {
+	env := m.getEnv(EnvKeyFormatOptions)
+	if env == "" {
+		return nil
+	}
+
+	return strings.Split(env, ",")
 }
 
 func (m *ShareManager) resizeVolume(devicePath, mountPath string) error {
@@ -267,7 +278,7 @@ func (m *ShareManager) resizeVolume(devicePath, mountPath string) error {
 }
 
 func (m *ShareManager) getEnvAsInt(key string, defaultVal int) int {
-	env := os.Getenv(key)
+	env := m.getEnv(key)
 	if env == "" {
 		m.logger.Warnf("Failed to get expected environment variable, env %v wasn't set, defaulting to %v", key, defaultVal)
 		return defaultVal
@@ -281,7 +292,7 @@ func (m *ShareManager) getEnvAsInt(key string, defaultVal int) int {
 }
 
 func (m *ShareManager) getEnvAsBool(key string, defaultVal bool) bool {
-	env := os.Getenv(key)
+	env := m.getEnv(key)
 	if env == "" {
 		m.logger.Warnf("Failed to get expected environment variable, env %v wasn't set, defaulting to %v", key, defaultVal)
 		return defaultVal
@@ -292,6 +303,10 @@ func (m *ShareManager) getEnvAsBool(key string, defaultVal bool) bool {
 		return defaultVal
 	}
 	return value
+}
+
+func (m *ShareManager) getEnv(key string) string {
+	return os.Getenv(key)
 }
 
 func (m *ShareManager) NewKubeClient() (*kubernetes.Clientset, error) {
